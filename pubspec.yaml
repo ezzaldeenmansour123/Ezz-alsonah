@@ -1,0 +1,29 @@
+name: sunnah
+description: عز السنة - موسوعة حديثية تعمل دون إنترنت
+publish_to: 'none'
+version: 1.1.1+3
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  sqlite3: ^2.4.6
+  sqlite3_flutter_libs: ^0.5.24
+  path_provider: ^2.1.4
+  shared_preferences: ^2.3.2
+  share_plus: ^10.1.4
+  crypto: ^3.0.3
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/sunnah.db
+    - assets/sunnah.db.sha256
+  fonts:
+    - family: Amiri
+      fonts:
+        - asset: assets/fonts/Amiri-Regular.ttf
+        - asset: assets/fonts/Amiri-Bold.ttf
+          weight: 700
