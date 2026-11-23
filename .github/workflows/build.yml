@@ -1,0 +1,84 @@
+name: Build Ezz Al-Sunnah APK
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.50.1'
+          channel: stable
+          cache: true
+
+      # Dataset revision is pinned so every build uses the exact same data.
+      # To update the data later, change DATASET_REV to the new HEAD commit of
+      # huggingface.co/datasets/quranlab/hadith (visible on the dataset page).
+      - name: Download hadith dataset (Arabic configs only)
+        run: |
+          pip install huggingface_hub pandas pyarrow pillow
+          python3 - <<'PY'
+          from huggingface_hub import snapshot_download
+          cfgs = ['bukhari','muslim','abudawud','tirmidhi','nasai','ibnmajah','malik','nawawi','hadeethenc']
+          rev = '9e5d61d8cff3c3b95745e11f9d0fe2efccb6126d'
+          p = snapshot_download(repo_id='quranlab/hadith', repo_type='dataset', revision=rev,
+                                allow_patterns=[f'{c}-ar/*' for c in cfgs] + ['*.md','metadata/*'],
+                                local_dir='/tmp/hadith-data')
+          open('/tmp/hadith-rev.txt','w').write(rev)
+          PY
+          find /tmp/hadith-data -maxdepth 2 | head -40
+
+      - name: Build SQLite library
+        run: |
+          mkdir -p assets
+          python3 tools/build_db.py /tmp/hadith-data assets/sunnah.db "$(cat /tmp/hadith-rev.txt)"
+
+      - name: Download Amiri font (OFL)
+        run: |
+          mkdir -p assets/fonts
+          curl -fL -o assets/fonts/Amiri-Regular.ttf https://github.com/google/fonts/raw/main/ofl/amiri/Amiri-Regular.ttf
+          curl -fL -o assets/fonts/Amiri-Bold.ttf https://github.com/google/fonts/raw/main/ofl/amiri/Amiri-Bold.ttf
+
+      - name: Generate Android platform files
+        run: |
+          flutter create --platforms=android --org com.sunnah.app --project-name sunnah .
+          rm -rf test
+          sed -i 's/android:label="[^"]*"/android:label="عز السنة"/' android/app/src/main/AndroidManifest.xml
+          sed -i 's#<application#<uses-permission android:name="android.permission.INTERNET"/>\n    <application#' android/app/src/main/AndroidManifest.xml
+
+      - name: Generate launcher icon
+        run: python3 tools/make_icon.py android/app/src/main/res
+
+      - run: flutter pub get
+
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - name: Rename APK
+        run: cp build/app/outputs/flutter-apk/app-release.apk EzzAlSunnah.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EzzAlSunnah-apk
+          path: EzzAlSunnah.apk
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: عز السنة - build ${{ github.run_number }}
+          files: EzzAlSunnah.apk
